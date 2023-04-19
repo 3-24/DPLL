@@ -2,7 +2,7 @@ import sys
 from copy import deepcopy
 
 def unit_propagation(clauses, assignment, map_var):
-    reduced_clauses = list(enumerate(clauses))
+    reduced_clauses = list(enumerate(deepcopy(clauses)))
     
     while True:
         updated = False
@@ -11,7 +11,7 @@ def unit_propagation(clauses, assignment, map_var):
                 continue
 
             satisfied = False
-            for var in clause.inner:
+            for var in clause.inner.copy():
                 if var < 0:
                     neg = True
                     avar = -var
@@ -20,7 +20,7 @@ def unit_propagation(clauses, assignment, map_var):
                     avar = var
                 
                 if avar in map_var:
-                    if map_var[avar] ^ neg:                         # False Literal
+                    if map_var[avar] == neg:                         # False Literal
                         clause.inner.remove(var)
                     else:
                         reduced_clauses[i] = (i, None)                   # Satisfied clause
@@ -46,7 +46,8 @@ def unit_propagation(clauses, assignment, map_var):
         
         if not updated:
             break
-    return reduced_clauses
+    
+    return list(filter(lambda t: t[1] != None, reduced_clauses))
             
 
 class Clause:
@@ -101,16 +102,17 @@ if __name__ == "__main__":
     while True:
         # [(1, {1, 2}), (3, {2, 3}), ...]
         reduced_clauses = unit_propagation(clauses, assignment, map_var)
-        print(reduced_clauses)
-        print(assignment)
-        input()
+        #print(reduced_clauses)
+        #print(assignment)
+        #input()
         if reduced_clauses == []:
             print(assignment)
             exit()
         
         i = None
-        for i, clause in reduced_clauses:
-            if (len(clause) == 0):                  
+        for j, clause in reduced_clauses:
+            if (len(clause) == 0):
+                i = j
                 break
         
         if i is not None:               # Conflict!
@@ -121,10 +123,11 @@ if __name__ == "__main__":
                 if idx == -1:             # Decision assignment
                     continue
                 else:
-                    conflict_clause = conflict_clause.resolvant(var, clauses[idx])
+                    conflict_clause = conflict_clause.resolvent(var, clauses[idx])
 
             j = len(assignment)
             for var, _1, _2 in assignment.__reversed__():
+                print(var, _1, _2)
                 del map_var[var]
                 if conflict_clause.exist(var):
                     break
@@ -133,6 +136,6 @@ if __name__ == "__main__":
             clauses.append(conflict_clause)
         else:
             # Use a decision strategy to determine a new assignment p |-> b
-            p = abs(reduced_clauses[0].get())
+            p = abs(reduced_clauses[0][1].get())
             assignment.append((p, True, -1))           # -1 Means represents assignment is decided.
             map_var[p] = True
