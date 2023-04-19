@@ -7,10 +7,10 @@ def unit_propagation(clauses, assignment, map_var):
     while True:
         updated = False
         for (i, clause) in reduced_clauses:
-            reduced_clause = reduced_clauses[i]
-            if reduced_clause is None:
+            if clause is None:
                 continue
 
+            satisfied = False
             for var in clause.inner:
                 if var < 0:
                     neg = True
@@ -21,15 +21,17 @@ def unit_propagation(clauses, assignment, map_var):
                 
                 if avar in map_var:
                     if map_var[avar] ^ neg:                         # False Literal
-                        reduced_clause.inner.remove(var)
+                        clause.inner.remove(var)
                     else:
-                        reduced_clauses[i] = None                   # Satisfied clause
+                        reduced_clauses[i] = (i, None)                   # Satisfied clause
+                        satisfied = True
+                        break
             
-            if reduced_clauses[i] is None:
+            if satisfied:
                 continue
             
-            if len(reduced_clause) == 1:
-                literal = reduced_clause.get()
+            if len(clause) == 1:
+                literal = clause.get()
                 if literal > 0:
                     var = literal
                     assignment.append((var, True, i))
@@ -40,7 +42,7 @@ def unit_propagation(clauses, assignment, map_var):
                     map_var[var] = False
                 
                 updated = True
-                reduced_clauses[i] = None
+                reduced_clauses[i] = (i, None)
         
         if not updated:
             break
@@ -60,6 +62,9 @@ class Clause:
 
     def __len__(self):
         return len(self.inner)
+    
+    def __repr__(self):
+        return repr(self.inner)
 
     def resolvent(self, var, clause):
         new_inner = self.inner.union(clause.inner)
@@ -96,6 +101,9 @@ if __name__ == "__main__":
     while True:
         # [(1, {1, 2}), (3, {2, 3}), ...]
         reduced_clauses = unit_propagation(clauses, assignment, map_var)
+        print(reduced_clauses)
+        print(assignment)
+        input()
         if reduced_clauses == []:
             print(assignment)
             exit()
