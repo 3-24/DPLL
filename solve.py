@@ -1,7 +1,51 @@
 import sys
+from copy import deepcopy
 
 def unit_propagation(clauses, assignment, map_var):
-    pass
+    reduced_clauses = set((i, clause) in enumerate(clauses))
+    
+    while True:
+        updated = False
+        for (i, clause) in reduced_clauses:
+            reduced_clause = reduced_clauses[i]
+            if reduced_clause is None:
+                continue
+
+            for var in clause.inner:
+                if var < 0:
+                    neg = True
+                    avar = -var
+                else:
+                    neg = False
+                    avar = var
+                
+                if avar in map_var:
+                    if map_var[avar] ^ neg:                         # False Literal
+                        reduced_clause.inner.remove(var)
+                    else:
+                        reduced_clauses[i] = None                   # Satisfied clause
+            
+            if reduced_clauses[i] is None:
+                continue
+            
+            if len(reduced_clause) == 1:
+                literal = reduced_clause.get()
+                if literal > 0:
+                    var = literal
+                    assignment.append((var, True, i))
+                    map_var[var] = True
+                else:
+                    var = -literal
+                    assignment.append((var, False, i))
+                    map_var[var] = False
+                
+                updated = True
+                reduced_clauses[i] = None
+        
+        if not updated:
+            break
+    return reduced_clauses
+            
 
 class Clause:
     def __init__(self, iterable):
@@ -69,6 +113,7 @@ if __name__ == "__main__":
                     conflict_clause = conflict_clause.resolvant(var, clauses[idx])
             
             for j, (var, _1, _2) in enumerate(assignment).__reversed__():
+                del map_var[var]
                 if conflict_clause.exist(var):
                     break
             assignment = assignment[:j]
