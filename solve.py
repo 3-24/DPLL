@@ -2,7 +2,7 @@ import sys
 from copy import deepcopy
 
 def unit_propagation(clauses, assignment, map_var):
-    reduced_clauses = set((i, clause) in enumerate(clauses))
+    reduced_clauses = list(enumerate(clauses))
     
     while True:
         updated = False
@@ -58,6 +58,9 @@ class Clause:
     def exist(self, variable):
         return abs(variable) in self.inner_abs
 
+    def __len__(self):
+        return len(self.inner)
+
     def resolvent(self, var, clause):
         new_inner = self.inner.union(clause.inner)
         new_inner.remove(var)
@@ -111,11 +114,13 @@ if __name__ == "__main__":
                     continue
                 else:
                     conflict_clause = conflict_clause.resolvant(var, clauses[idx])
-            
-            for j, (var, _1, _2) in enumerate(assignment).__reversed__():
+
+            j = len(assignment)
+            for var, _1, _2 in assignment.__reversed__():
                 del map_var[var]
                 if conflict_clause.exist(var):
                     break
+                j -= 1
             assignment = assignment[:j]
             clauses.append(conflict_clause)
         else:
