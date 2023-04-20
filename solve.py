@@ -125,7 +125,6 @@ class DPLL:
         
         self.vmap[var] = value
 
-        #satisfied_clauses = pclauses if self.vmap[var] else nclauses
         target = self.negative_clauses[var] \
             if value else self.positive_clauses[var]
 
