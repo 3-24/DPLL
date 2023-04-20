@@ -1,93 +1,110 @@
 import sys
-from copy import deepcopy
+from copy import deepcopy, copy
+
 
 def parse_problem(filename):
     with open(filename) as f:
         lines = f.readlines()
-    
-    for i in range(len(lines)-1):
-        if lines[i] == "%\n" and lines[i+1] == "0\n": 
+
+    for i in range(len(lines) - 1):
+        if lines[i] == "%\n" and lines[i + 1] == "0\n":
             lines = lines[:i]
             break
 
     clauses = []
     for line in lines:
-        if (line[0] == "c"): # comment
+        if line[0] == "c":  # comment
             continue
-        if (line[0] == "p"):
+        if line[0] == "p":
             toks = line.split()
-            assert (toks[1] == "cnf")
-            assert (len(toks) == 4)
-            num_vars, num_clauses = toks[2], toks[3]
+            assert toks[1] == "cnf"
+            assert len(toks) == 4
+            num_vars, num_clauses = map(int, (toks[2], toks[3]))
         else:
             toks = list(map(int, line.split()))
-            assert (toks[-1] == 0)
+            assert toks[-1] == 0
             toks.pop()
             clauses.append(Clause(toks))
-    
-    assert(num_clauses == len(clauses))
+
+    assert num_clauses == len(clauses)
 
     return clauses, num_vars
+
 
 class Solution:
     def __init__(self, sat, sol=None):
         self.sat = sat
         self.sol = sol
-    
+
     def __repr__(self):
         if self.sat:
             first_line = "s SATISFIABLE\n"
             L = ["v"]
-            for (k, v) in self.sol.items():
+            for k, v in self.sol.items():
                 if v:
                     s = ""
                 else:
                     s = "-"
                 L.append(s + str(k))
             L.append("0")
-            return first_line + ' '.join(L)
+            return first_line + " ".join(L)
         else:
             return "s UNSATISFIABLE"
 
-class Assignment:
-    def __init__(self, var, implied, associated_clause=None):
-        self.var = var
-        self.implied = implied      # or decided
-        self.associated_clause = None
 
 class Clause:
     def __init__(self, iterable):
-        self.inner = {var: None for var in iterable}
+        self.inner = set(iterable)
         self.undecided = set(iterable)
-        self.count_true = 0
-        self.count_false = 0
-    
+        self.false = set()
+        self.true = set()
+
     def get(self):
-        return iter(self.undecided).next()
+        return next(iter(self.undecided))
 
     def assign(self, var, value):
         if var in self.inner:
             self.undecided.remove(var)
-            self.inner[var] = value
             if value:
-                self.count_true += 1
+                self.true.add(var)
             else:
-                self.count_false += 1
-        elif -var in self.inner:
+                self.false.add(var)
+        if -var in self.inner:
             self.undecided.remove(-var)
-            self.inner[-var] = not value
-            if not value:
-                self.count_true += 1
+            if value:
+                self.false.add(-var)
             else:
-                self.count_false += 1
+                self.true.add(-var)
 
-    def is_satisfied(self):
-        return self.count_true >= 1
+    def disassign(self, var, value):
+        if value == True:
+            if var in self.true:
+                self.true.remove(var)
+                self.undecided.add(var)
+            if -var in self.false:
+                self.false.remove(-var)
+                self.undecided.add(-var)
+        else:
+            if var in self.false:
+                self.false.remove(var)
+                self.undecided.add(var)
+            if -var in self.true:
+                self.true.remove(-var)
+                self.undecided.add(-var)
+
+    def empty(self):
+        return len(self.inner) == 0
+
+    def exist(self, var):
+        return (var in self.inner) or (-var in self.inner)
+
+    def satisfied(self):
+        return len(self.true) >= 1
 
     def __len__(self):
-        assert(not self.satisfied())
-        return len(self.inner) - self.count_false
-    
+        assert not self.satisfied()
+        return len(self.undecided)
+
     def __repr__(self):
         return repr(self.inner)
 
@@ -103,120 +120,161 @@ class Clause:
         new_inner.remove(-var)
         return Clause(new_inner)
 
+
 class DPLL:
     def __init__(self, clauses, nvars):
         self.clauses = clauses
         self.assignment = []
         self.vmap = {}
-        self.positive_clauses = {var: set() for var in range(1, nvars+1)}
-        self.negative_clauses = {var: set() for var in range(1, nvars+1)}
-        
+        self.positive_clauses = {var: set() for var in range(1, nvars + 1)}
+        self.negative_clauses = {var: set() for var in range(1, nvars + 1)}
+
         for i, clause in enumerate(clauses):
-            for literal in clause:
+            for literal in clause.inner:
                 if literal > 0:
                     self.positive_clauses[literal].add(i)
                 else:
-                    self.negative_clauses[literal].add(i)
-    
-    def propagate(self, var, value, record=True):
+                    self.negative_clauses[-literal].add(i)
+
+    def propagate(self, var, value, associated_clause=None):
         if var in self.vmap:
-            if self.vmap[var] != value:
-                return False
-        
+            return None  # Already propagated
+
         self.vmap[var] = value
+        self.assignment.append((var, associated_clause))
 
-        target = self.negative_clauses[var] \
-            if value else self.positive_clauses[var]
+        true_clauses = (
+            self.positive_clauses[var] if value else self.negative_clauses[var]
+        )
 
-        for i in target:
+        for i in true_clauses:
             clause = self.clauses[i]
             clause.assign(var, value)
-            if clause.is_unit():
+
+        false_clauses = (
+            self.negative_clauses[var] if value else self.positive_clauses[var]
+        )
+
+        for i in false_clauses:
+            clause = self.clauses[i]
+            clause.assign(var, value)
+
+            if clause.satisfied():
+                continue
+
+            if clause.is_false():
+                return i
+
+            elif clause.is_unit():
                 literal = clause.get()
                 nvar = abs(literal)
                 if literal > 0:
-                    return self.propagate(nvar, True, record)
+                    conflict = self.propagate(nvar, True, i)
                 else:
-                    return self.propagate(nvar, False, record)
-        
-        return True
-            
-            
+                    conflict = self.propagate(nvar, False, i)
+                if conflict is not None:
+                    return conflict
+
+        return None
 
     def preprocess(self):
-        for clause in self.clauses:
-            if clause.is_satisfied():
+        for i, clause in enumerate(self.clauses):
+            if clause.satisfied():
                 continue
+            if clause.is_false():
+                return False
             if clause.is_unit():
                 literal = clause.get()
                 var = abs(literal)
                 if literal > 0:
-                    if not self.propagate(var, True, record=False):
+                    if self.propagate(var, True, i) is not None:
                         return False
                 else:
-                    if not self.propagate(var, False, record=False):
+                    if self.propagate(var, False, i) is not None:
                         return False
 
         return True
 
     def satisfied(self):
-        
+        for clause in self.clauses:
+            if not clause.satisfied():
+                return False
+        return True
 
-    def conflict(self):
-        for j, clause in self.reduced_clauses:
-            if (clause.is_false()):
-                return j
-        return None
-
-    def learn_clause(self, conflict_clause):
-        learned_clause = conflict_clause
-        for (var, _, idx) in self.assignment.__reversed__():
+    def learn_clause(self, conflict_clause: Clause):
+        learned_clause = Clause(copy(conflict_clause.inner))
+        for var, idx in self.assignment.__reversed__():
+            if idx is None:  # Decision assignment
+                continue
             if not learned_clause.exist(var):
                 continue
-            if idx == -1:             # Decision assignment
-                continue
-            else:                     # Implied assignment with var
+            else:  # Implied assignment with var
                 learned_clause = learned_clause.resolvent(var, self.clauses[idx])
+
+        for literal in learned_clause.inner:
+            var = abs(literal)
+            if literal > 0:
+                self.positive_clauses[var].add(len(self.clauses))
+            else:
+                self.negative_clauses[var].add(len(self.clauses))
+
+            learned_clause.assign(var, self.vmap[var])
+
+        self.clauses.append(learned_clause)
+
         return learned_clause
-    
-    def backtrack(self, learned_clause):
+
+    def backtrack(self, learned_clause: Clause):
         while True:
-            var, _1, _2 = self.assignment.pop()
-            del self.map_var[var]
+            var, _ = self.assignment.pop()
+            value = self.vmap[var]
+            del self.vmap[var]
+
+            for i in self.negative_clauses[var]:
+                affected_clause: Clause = self.clauses[i]
+                affected_clause.disassign(var, value)
+
+            for i in self.positive_clauses[var]:
+                affected_clause: Clause = self.clauses[i]
+                affected_clause.disassign(var, value)
+
             if learned_clause.exist(var):
                 break
-    
+
     def decision(self):
-        p = abs(self.reduced_clauses[0][1].get())
-        self.assign(p, True, -1)
+        for clause in self.clauses:
+            if not clause.satisfied():
+                var = abs(clause.get())
+                return self.propagate(var, True, None)
 
     def run(self):
         if not self.preprocess():
             return Solution(False)
-        
+
+        conflict = None
+
         while True:
             if self.satisfied():
-                return Solution(True, self.map_var)
+                return Solution(True, self.vmap)
 
-            if (i:=self.conflict()) is not None:
-                learned_clause = self.learn_clause(self.clauses[i])
-                if learned_clause.is_false():
+            if conflict is not None:
+                learned_clause = self.learn_clause(self.clauses[conflict])
+                if learned_clause.empty():
                     return Solution(False)
                 self.backtrack(learned_clause)
-                self.clauses.append(learned_clause)
+
+                assert learned_clause.is_unit()
+                literal = learned_clause.get()
+                var = abs(literal)
+                if literal > 0:
+                    conflict = self.propagate(var, True, len(self.clauses) - 1)
+                else:
+                    conflict = self.propagate(var, False, len(self.clauses) - 1)
             else:
-                self.decision()
-            
-            del self.reduced_clauses
-    
-    def verify(self):
-        self.unit_prop()
-        return self.satisfied()
+                conflict = self.decision()
 
 
 if __name__ == "__main__":
     dpll = DPLL(*parse_problem(sys.argv[1]))
     result = dpll.run()
-    if result.sat:
-        assert(dpll.verify())
     print(result)
