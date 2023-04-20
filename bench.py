@@ -1,13 +1,13 @@
 from pathlib import Path
 from solve import *
 import time
+import sys
 
-bench_dir = Path("./uf20-91")
+bench_dir = Path(sys.argv[1])
 
 start = time.time()
 for file in bench_dir.iterdir():
-    clauses = parse_problem(file)
-    dpll = DPLL(clauses)
+    dpll = DPLL(*parse_problem(file))
     result = dpll.run()
     print(result)
 
