@@ -1,10 +1,16 @@
 import sys
 from copy import deepcopy
+import random
 
 def parse_problem(filename):
     with open(filename) as f:
         lines = f.readlines()
     
+    for i in range(len(lines)-1):
+        if lines[i] == "%\n" and lines[i+1] == "0\n":
+            lines = lines[:i]
+            break
+
     clauses = []
     for line in lines:
         if (line[0] == "c"): # comment
@@ -148,9 +154,10 @@ class DPLL:
             if learned_clause.exist(var):
                 break
     
+    # Heuristic to decide most popular variable
     def decision(self):
-        p = abs(self.reduced_clauses[0][1].get())
-        self.assign(p, True, -1)
+        _, clause = random.choice(self.reduced_clauses)
+        self.assign(abs(clause.get()), True, -1)
 
     def run(self):
         while True:
