@@ -1,6 +1,6 @@
 import sys
-from copy import deepcopy, copy
-
+from copy import copy
+import time
 
 def parse_problem(filename):
     with open(filename) as f:
@@ -128,6 +128,7 @@ class DPLL:
         self.vmap = {}
         self.positive_clauses = {var: set() for var in range(1, nvars + 1)}
         self.negative_clauses = {var: set() for var in range(1, nvars + 1)}
+        self.time = {"learn": 0, "satisfy_check": 0, "propagate": 0}
 
         for i, clause in enumerate(clauses):
             for literal in clause.inner:
@@ -244,8 +245,13 @@ class DPLL:
     def decision(self):
         for clause in self.clauses:
             if not clause.satisfied():
-                var = abs(clause.get())
-                return self.propagate(var, True, None)
+                literal = clause.get()
+                var = abs(literal)
+                start = time.time()
+                conflict = self.propagate(var, True if literal > 0 else False, None)
+                end = time.time()
+                self.time["propagate"] += end - start
+                return conflict
 
     def run(self):
         if not self.preprocess():
@@ -254,22 +260,32 @@ class DPLL:
         conflict = None
 
         while True:
+            start = time.time()
             if self.satisfied():
                 return Solution(True, self.vmap)
+            end = time.time()
+
+            self.time["satisfy_check"] += end - start
+            
 
             if conflict is not None:
+                start = time.time()
                 learned_clause = self.learn_clause(self.clauses[conflict])
                 if learned_clause.empty():
                     return Solution(False)
                 self.backtrack(learned_clause)
-
+                end = time.time()
+                self.time["learn"] += end - start
                 assert learned_clause.is_unit()
                 literal = learned_clause.get()
                 var = abs(literal)
+                start = time.time()
                 if literal > 0:
                     conflict = self.propagate(var, True, len(self.clauses) - 1)
                 else:
                     conflict = self.propagate(var, False, len(self.clauses) - 1)
+                end = time.time()
+                self.time["propagate"] += end - start
             else:
                 conflict = self.decision()
 
