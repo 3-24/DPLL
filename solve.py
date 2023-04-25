@@ -144,11 +144,14 @@ class DPLL:
         self.time = {"learn": 0, "satisfy_check": 0, "propagate": 0}
         self.watcher = {literal: set() for literal in range(-nvars - 1, nvars + 1)}
         self.updates = {literal: set() for literal in range(-nvars - 1, nvars + 1)}
+        self.literals = {literal: set() for literal in range(-nvars - 1, nvars + 1)}
         self.unit = []  # unit clauses used in preprocessing
 
         for i, clause in enumerate(clauses):
             if clause.is_unit():
                 self.unit.append(i)
+            for literal in clause.inner:
+                self.literals[literal].add(i)
             for literal in clause.watched_literals:
                 self.watcher[literal].add(i)
 
@@ -208,7 +211,13 @@ class DPLL:
         self.vmap[var] = value
         self.assignment.append((var, None if is_decision else associated_clause))
         self.update_literal(associated_clause, literal, True)
-
+        
+        for i in self.literals[literal]:
+            clause: Clause = self.clauses[i]
+            if clause.satisfied():
+                continue
+            self.update_literal(i, literal, True)
+        
         for i in copy(self.watcher[-literal]):
             clause: Clause = self.clauses[i]
             if clause.satisfied():
@@ -257,11 +266,13 @@ class DPLL:
             if not learned_clause.exist(var):
                 continue
             else:  # Implied assignment with var
+                print(var, learned_clause, self.clauses[idx])
                 learned_clause = learned_clause.resolvent(var, self.clauses[idx])
 
         n = len(self.clauses)
 
         for literal in learned_clause.inner:
+            self.literals[literal].add(n)
             self.updates[literal].add(n)
             learned_clause.false.add(literal)
 
@@ -311,7 +322,6 @@ class DPLL:
             print(f"Clauses: {self.clauses}")
             print(f"Current Solution: {self.vmap}")
             print(f"Assignments: {self.assignment}")
-            input()
 
             if self.satisfied():
                 return Solution(True, self.vmap)
