@@ -1,6 +1,7 @@
 import sys
 from copy import copy
 
+Debug = True
 
 def parse_problem(filename):
     with open(filename) as f:
@@ -174,28 +175,29 @@ class DPLL:
         if literal in clause.watched_literals:
             clause.watched_literals.remove(literal)
             self.watcher[literal].remove(i)
-            for literal in copy(clause.undecided):
-                if literal in clause.watched_literals:
+            for undecided_literal in copy(clause.undecided):
+                if undecided_literal in clause.watched_literals:
                     continue
-                val = self.map_literal(literal)
+                val = self.map_literal(undecided_literal)
                 # Lazy undecided
                 if val is None:
-                    clause.watched_literals.add(literal)
-                    self.watcher[literal].add(i)
+                    clause.watched_literals.add(undecided_literal)
+                    self.watcher[undecided_literal].add(i)
                     return None  # Exit normally
                 else:
-                    self.update_literal(i, literal, val)
+                    self.update_literal(i, undecided_literal, val)
                     if val is True:
                         return True  # True clause
 
     # Unit propagation
     # Set literal to True
     def propagate(self, literal, associated_clause, is_decision=False):
-        print(
-            "Decision" if is_decision else "Implied",
-            self.clauses[associated_clause],
-            literal
-        )
+        if Debug:
+            print(
+                "Decision" if is_decision else "Implied",
+                self.clauses[associated_clause],
+                literal
+            )
         
         var, value = (literal, True) if literal > 0 else (-literal, False)
         
@@ -210,7 +212,7 @@ class DPLL:
 
         self.vmap[var] = value
         self.assignment.append((var, None if is_decision else associated_clause))
-        self.update_literal(associated_clause, literal, True)
+        #self.update_literal(associated_clause, literal, True)
         
         for i in self.literals[literal]:
             clause: Clause = self.clauses[i]
@@ -266,7 +268,6 @@ class DPLL:
             if not learned_clause.exist(var):
                 continue
             else:  # Implied assignment with var
-                print(var, learned_clause, self.clauses[idx])
                 learned_clause = learned_clause.resolvent(var, self.clauses[idx])
 
         n = len(self.clauses)
@@ -290,7 +291,7 @@ class DPLL:
                 i = self.updates[var].pop()
                 clause: Clause = self.clauses[i]
                 clause.disassign(var)
-                if len(clause.watched_literals) <= 2:
+                if len(clause.watched_literals) < 2:
                     clause.watched_literals.add(var)
                     self.watcher[var].add(i)
 
@@ -298,7 +299,7 @@ class DPLL:
                 i = self.updates[-var].pop()
                 clause: Clause = self.clauses[i]
                 clause.disassign(-var)
-                if len(clause.watched_literals) <= 2:
+                if len(clause.watched_literals) < 2:
                     clause.watched_literals.add(-var)
                     self.watcher[-var].add(i)
 
@@ -319,20 +320,23 @@ class DPLL:
         conflict = None
 
         while True:
-            print(f"Clauses: {self.clauses}")
-            print(f"Current Solution: {self.vmap}")
-            print(f"Assignments: {self.assignment}")
+            if Debug:
+                print(f"Clauses: {self.clauses}")
+                print(f"Current Solution: {self.vmap}")
+                print(f"Assignments: {self.assignment}")
 
             if self.satisfied():
                 return Solution(True, self.vmap)
 
             if conflict is not None:
                 learned_clause = self.learn_clause(self.clauses[conflict])
-                print(f"Learned {self.clauses[conflict]} -> {learned_clause}")
+                if Debug:
+                    print(f"Learned {self.clauses[conflict]} -> {learned_clause}")
                 if learned_clause.empty():
                     return Solution(False)
                 self.backtrack(learned_clause)
-                print(f"Backtrack {learned_clause}")
+                if Debug:
+                    print(f"Backtrack {learned_clause}")
                 assert learned_clause.is_unit()
                 literal = learned_clause.get()
                 conflict = self.propagate(literal, len(self.clauses) - 1)
