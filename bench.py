@@ -18,6 +18,7 @@ total_time = None
 
 start = time.time()
 for file in bench_dir.iterdir():
+    print(file)
     dpll = DPLL(*parse_problem(file))
     result = dpll.run()
     total_time = add_time(total_time, dpll.time)
