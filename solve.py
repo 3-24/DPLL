@@ -1,7 +1,7 @@
 import sys
 from copy import copy
 
-Debug = True
+Debug = False
 
 def parse_problem(filename):
     with open(filename) as f:
@@ -175,6 +175,8 @@ class DPLL:
         if literal in clause.watched_literals:
             clause.watched_literals.remove(literal)
             self.watcher[literal].remove(i)
+            
+            # Decide new watched literal
             for undecided_literal in copy(clause.undecided):
                 if undecided_literal in clause.watched_literals:
                     continue
@@ -185,74 +187,46 @@ class DPLL:
                     self.watcher[undecided_literal].add(i)
                     return None  # Exit normally
                 else:
-                    self.update_literal(i, undecided_literal, val)
-                    if val is True:
-                        return True  # True clause
+                    assert(val is False)
+                    # This is not watched literal
+                    clause.undecided.remove(undecided_literal)
+                    clause.false.add(literal)
 
-    # Unit propagation
-    # Set literal to True
-    def propagate(self, literal, associated_clause, is_decision=False):
-        if Debug:
-            print(
-                "Decision" if is_decision else "Implied",
-                self.clauses[associated_clause],
-                literal
-            )
-        
-        var, value = (literal, True) if literal > 0 else (-literal, False)
-        
-        clause = self.clauses[associated_clause]
-        
-        if var in self.vmap:
-            self.update_literal(associated_clause, literal, self.vmap[var])
-            if value == self.vmap[var]:
-                return None
-            else:
-                return associated_clause
-
-        self.vmap[var] = value
-        self.assignment.append((var, None if is_decision else associated_clause))
-        #self.update_literal(associated_clause, literal, True)
-        
-        for i in self.literals[literal]:
-            clause: Clause = self.clauses[i]
-            if clause.satisfied():
-                continue
-            self.update_literal(i, literal, True)
-        
-        for i in copy(self.watcher[-literal]):
-            clause: Clause = self.clauses[i]
-            if clause.satisfied():
-                continue
-            self.update_literal(i, -literal, False)
+    def unit_prop(self, decision=False):
+        while (len(self.unit) > 0):
+            i = self.unit.pop()
+            clause = self.clauses[i]
+            literal = clause.get()
+            var, value = (literal, True) if literal > 0 else (-literal, False)
             
-            if clause.satisfied():
+            if var in self.vmap:
+                assert(var == self.vmap[var])
+                self.update_literal(i, literal, self.vmap[var])
                 continue
-            
-            if clause.is_false():
-                return i  # Conflict
 
-            if clause.is_unit():
-                unit_lit = clause.get()
-                conflict = self.propagate(unit_lit, i)
-                if conflict is not None:
-                    return conflict
+            self.vmap[var] = value
+            self.assignment.append((var, None if decision else i))
+            
+            for j in self.literals[literal]:
+                true_clause: Clause = self.clauses[j]
+                if true_clause.satisfied():
+                    continue
+                self.update_literal(j, literal, True)
+            
+            for j in copy(self.watcher[-literal]):
+                false_clause: Clause = self.clauses[j]
+                if false_clause.satisfied():
+                    continue
+                self.update_literal(j, -literal, False)
+                if false_clause.satisfied():
+                    continue
+                if false_clause.is_false():
+                    self.unit.clear()
+                    return j
+                if false_clause.is_unit():
+                    self.unit.append(j)
 
         return None
-
-    def preprocess(self):
-        for i in self.unit:
-            clause = self.clauses[i]
-            if clause.satisfied():
-                continue
-            if clause.is_false():
-                return False
-
-            literal = clause.get()
-            if self.propagate(literal, i) is not None:
-                return False
-
-        return True
 
     def satisfied(self):
         for clause in self.clauses:
@@ -268,6 +242,8 @@ class DPLL:
             if not learned_clause.exist(var):
                 continue
             else:  # Implied assignment with var
+                if Debug:
+                    print(f"Learning iter: {learned_clause}, {self.clauses[idx]}")
                 learned_clause = learned_clause.resolvent(var, self.clauses[idx])
 
         n = len(self.clauses)
@@ -275,6 +251,7 @@ class DPLL:
         for literal in learned_clause.inner:
             self.literals[literal].add(n)
             self.updates[literal].add(n)
+            assert(self.map_literal(literal) is False)
             learned_clause.false.add(literal)
 
         self.clauses.append(learned_clause)
@@ -284,7 +261,6 @@ class DPLL:
     def backtrack(self, learned_clause: Clause):
         while True:
             var, _ = self.assignment.pop()
-            # value = self.vmap[var]
             del self.vmap[var]
 
             while len(self.updates[var]) != 0:
@@ -310,25 +286,28 @@ class DPLL:
         for i, clause in enumerate(self.clauses):
             if not clause.satisfied():
                 literal = clause.get()
-                conflict = self.propagate(literal, i, True)
-                return conflict
+                self.update_literal(i, literal, True)
+                break
 
     def run(self):
-        if not self.preprocess():
-            return Solution(False)
-
-        conflict = None
-
+        preprocess = True
         while True:
             if Debug:
                 print(f"Clauses: {self.clauses}")
                 print(f"Current Solution: {self.vmap}")
                 print(f"Assignments: {self.assignment}")
+            
+            conflict = self.unit_prop()
+            if preprocess:
+                if conflict is not None:
+                    return Solution(False)
+                preprocess = False
 
             if self.satisfied():
                 return Solution(True, self.vmap)
 
             if conflict is not None:
+                assert(self.clauses[conflict].is_false())
                 learned_clause = self.learn_clause(self.clauses[conflict])
                 if Debug:
                     print(f"Learned {self.clauses[conflict]} -> {learned_clause}")
@@ -338,10 +317,9 @@ class DPLL:
                 if Debug:
                     print(f"Backtrack {learned_clause}")
                 assert learned_clause.is_unit()
-                literal = learned_clause.get()
-                conflict = self.propagate(literal, len(self.clauses) - 1)
+                self.unit.append(len(self.clauses)-1)
             else:
-                conflict = self.decision()
+                self.decision()
 
 
 if __name__ == "__main__":
