@@ -114,16 +114,16 @@ class Clause:
         return (var in self.inner) or (-var in self.inner)
 
     def is_true(self):
-        return len(self.true) > 0
+        return bool(self.true)
 
     def is_false(self):
-        return len(self.false) == len(self.inner)
+        return self.false == self.inner
 
     def is_unit(self):
-        return len(self.true) == 0 and len(self.undecided) == 1
+        return not bool(self.true) and len(self.undecided) == 1
 
     def resolvent(self, var, clause):
-        new_inner = set(self.inner).union(set(clause.inner))
+        new_inner = self.inner.union(clause.inner)
         new_inner.remove(var)
         new_inner.remove(-var)
         return Clause(inner=new_inner)          # Will assign undecided / false later
@@ -159,11 +159,13 @@ class DPLL:
     
     # Update of literal i
     # Return True if conflict in updating watched literals
-    def update_literal(self, i, literal, val):
+    def update_literal(self, i, literal):
         clause: Clause = self.clauses[i]
+        if clause.is_true():
+            return False
         clause.undecided.remove(literal)
         self.updates[literal].add(i)
-        if val:
+        if literal in self.vmap:
             clause.true.add(literal)
         else:
             clause.false.add(literal)
@@ -172,25 +174,23 @@ class DPLL:
         if literal in clause.watched_literals:
             self.remove_watched_literal(i, literal)
             for new_literal in clause.undecided - clause.watched_literals:
-                if new_literal in self.vmap:
-                    # Unrechable - True is already propagated
-                    assert(False)
-                elif -new_literal in self.vmap:
+                if -new_literal in self.vmap:
+                    # False
                     clause.undecided.remove(new_literal)
                     self.updates[new_literal].add(i)
                     clause.false.add(new_literal)
                 else:
+                    # Undecided
                     self.add_watched_literal(i, new_literal)
                     break
         
         if clause.is_false():
             # Conflict in lazy false update
-            self.unit.clear()
             return True
-        else:
-            if clause.is_unit():
-                self.unit.append(i)
-            return False
+        
+        if clause.is_unit():
+            self.unit.append(i)
+        return False
             
     def unit_prop(self):
         while (len(self.unit) > 0):
@@ -208,12 +208,12 @@ class DPLL:
             
             for j in copy(self.watched_literal_to_clause[-literal]):
                 # Possible conflict
-                if self.update_literal(j, -literal, False):
+                if self.update_literal(j, -literal):
                     return j
             
             for j in self.literal_to_clause[literal]:
                 # No conflict in True assignment
-                self.update_literal(j, literal, True)
+                self.update_literal(j, literal)
 
         return None
     
@@ -285,7 +285,7 @@ class DPLL:
                 # False updates
                 for j in copy(self.watched_literal_to_clause[-literal]):
                     # Possible conflict
-                    if self.update_literal(j, -literal, False):
+                    if self.update_literal(j, -literal):
                         # This is lazy-evaluated unit clause
                         self.rollback_update(literal)
                         self.assignment.pop()
@@ -294,7 +294,7 @@ class DPLL:
                 
                 for j in self.literal_to_clause[literal]:
                     # No conflict in True assignment
-                    self.update_literal(j, literal, True)
+                    self.update_literal(j, literal)
                 return None
 
     def run(self):
@@ -317,6 +317,7 @@ class DPLL:
                 return Solution(True, self.vmap)
 
             if conflict is not None:
+                self.unit.clear()
                 # assert(self.clauses[conflict].is_false())
                 learned_clause = self.learn_clause(self.clauses[conflict])
                 if learned_clause.empty():
