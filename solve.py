@@ -2,7 +2,7 @@ import sys
 from copy import copy
 
 def parse_problem(filename):
-    with open(filename) as f:
+    with open(filename, 'r') as f:
         lines = f.readlines()
 
     for i in range(len(lines) - 1):
@@ -43,19 +43,19 @@ class Assignment:
         assignment.literal = literal
         assignment.idx = None
         return assignment
-    
+
     def impl(self):
         return self.idx is not None
-    
+
     def desc(self):
         return self.idx is None
-    
+
     def __repr__(self):
         if self.impl():
             return f"I(i={self.idx}, L={self.literal})"
         else:
             return f"D(L={self.literal})"
-    
+
 
 class Solution:
     def __init__(self, sat, sol=None):
@@ -70,23 +70,23 @@ class Solution:
                 L.append(str(s))
             L.append("0")
             return first_line + " ".join(L)
-        else:
-            return "s UNSATISFIABLE"
+        
+        return "s UNSATISFIABLE"
 
 
 class Clause:
-    def __init__(
-        self, inner=None, undecided=None, true=None, false=None, watched_literals=None
-    ):
-        self.inner = inner if inner is not None else set()
-        self.undecided = undecided if undecided is not None else set()
-        self.true = true if true is not None else set()
-        self.false = false if false is not None else set()
-        self.watched_literals = watched_literals if watched_literals is not None else set()
+    def __init__(self):
+        self.inner = set()
+        self.undecided = set()
+        self.true = set()
+        self.false = set()
+        self.watched_literals = set()
 
     @classmethod
     def default_clause(cls, iterable):
-        clause = cls(inner=set(iterable), undecided=set(iterable))
+        clause = cls()
+        clause.inner = set(iterable)
+        clause.undecided = copy(clause.inner)
 
         if len(clause.undecided) <= 2:
             clause.watched_literals = copy(clause.undecided)
@@ -97,9 +97,9 @@ class Clause:
         return clause
 
     def __repr__(self):
-        return "{" + ", ".join(
-            map(lambda i: f"*{i}{'=T' if i in self.true else ''}{'=F' if i in self.false else ''}", self.inner)
-            ) + "}"
+        return "{" + ", ".join(map(
+            lambda i: f"*{i}{'=T' if i in self.true else ''}{'=F' if i in self.false else ''}"
+            , self.inner)) + "}"
 
     def disassign(self, literal):
         # assert((literal in self.true - self.false) or (literal in self.false - self.true))
@@ -123,10 +123,11 @@ class Clause:
         return not bool(self.true) and len(self.undecided) == 1
 
     def resolvent(self, var, clause):
-        new_inner = self.inner.union(clause.inner)
-        new_inner.remove(var)
-        new_inner.remove(-var)
-        return Clause(inner=new_inner)          # Will assign undecided / false later
+        cl = Clause()
+        cl.inner = self.inner.union(clause.inner)
+        cl.inner.remove(var)
+        cl.inner.remove(-var)
+        return cl          # Will assign undecided / false later
 
 
 class DPLL:
@@ -151,12 +152,12 @@ class DPLL:
         clause = self.clauses[idx]
         self.watched_literal_to_clause[literal].add(idx)
         clause.watched_literals.add(literal)
-    
+
     def remove_watched_literal(self, idx, literal):
         clause = self.clauses[idx]
         self.watched_literal_to_clause[literal].remove(idx)
         clause.watched_literals.remove(literal)
-    
+
     # Update of literal i
     # Return True if conflict in updating watched literals
     def update_literal(self, i, literal):
@@ -193,7 +194,7 @@ class DPLL:
         return False
             
     def unit_prop(self):
-        while (len(self.unit) > 0):
+        while len(self.unit) > 0:
             i = self.unit.pop()
             clause = self.clauses[i]
             if clause.is_true():
