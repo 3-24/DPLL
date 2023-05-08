@@ -101,9 +101,6 @@ class Clause:
             map(lambda i: f"*{i}{'=T' if i in self.true else ''}{'=F' if i in self.false else ''}", self.inner)
             ) + "}"
 
-    def get(self):
-        return next(iter(self.undecided))
-
     def disassign(self, literal):
         # assert((literal in self.true - self.false) or (literal in self.false - self.true))
         self.true.discard(literal)
@@ -160,14 +157,6 @@ class DPLL:
         self.watched_literal_to_clause[literal].remove(idx)
         clause.watched_literals.remove(literal)
     
-    def value(self, literal):
-        if literal in self.vmap:
-            return True
-        elif -literal in self.vmap:
-            return False
-        else:
-            return None
-    
     # Update of literal i
     # Return True if conflict in updating watched literals
     def update_literal(self, i, literal, val):
@@ -183,17 +172,16 @@ class DPLL:
         if literal in clause.watched_literals:
             self.remove_watched_literal(i, literal)
             for new_literal in clause.undecided - clause.watched_literals:
-                new_val = self.value(new_literal)
-                if new_val is None:
-                    self.add_watched_literal(i, new_literal)
-                    break
-                elif new_val is False:
+                if new_literal in self.vmap:
+                    # Unrechable - True is already propagated
+                    assert(False)
+                elif -new_literal in self.vmap:
                     clause.undecided.remove(new_literal)
                     self.updates[new_literal].add(i)
                     clause.false.add(new_literal)
                 else:
-                    # Unreachable - True is already propagated.
-                    assert(False)
+                    self.add_watched_literal(i, new_literal)
+                    break
         
         if clause.is_false():
             # Conflict in lazy false update
@@ -212,8 +200,7 @@ class DPLL:
                 continue
             
             # assert(clause.is_unit())
-            
-            literal = clause.get()
+            literal = next(iter(clause.undecided))
             # assert(not (-literal in self.vmap))
             
             self.vmap.add(literal)
