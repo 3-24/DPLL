@@ -29,6 +29,33 @@ def parse_problem(filename):
 
     return clauses, num_vars
 
+class Assignment:
+    @classmethod
+    def implication(cls, literal, idx):
+        assignment = cls()
+        assignment.literal = literal
+        assignment.idx = idx
+        return assignment
+
+    @classmethod
+    def decision(cls, literal):
+        assignment = cls()
+        assignment.literal = literal
+        assignment.idx = None
+        return assignment
+    
+    def impl(self):
+        return self.idx is not None
+    
+    def desc(self):
+        return self.idx is None
+    
+    def __repr__(self):
+        if self.impl():
+            return f"I(i={self.idx}, L={self.literal})"
+        else:
+            return f"D(L={self.literal})"
+    
 
 class Solution:
     def __init__(self, sat, sol=None):
@@ -78,7 +105,7 @@ class Clause:
         return next(iter(self.undecided))
 
     def disassign(self, literal):
-        assert(literal in self.true ^ literal in self.false)
+        # assert((literal in self.true - self.false) or (literal in self.false - self.true))
         self.true.discard(literal)
         self.false.discard(literal)
         self.undecided.add(literal)
@@ -90,7 +117,7 @@ class Clause:
         return (var in self.inner) or (-var in self.inner)
 
     def is_true(self):
-        return len(self.true) >= 1
+        return len(self.true) > 0
 
     def is_false(self):
         return len(self.false) == len(self.inner)
@@ -114,16 +141,25 @@ class DPLL:
         self.watched_literal_to_clause = {literal: set() for literal in range(-nvars - 1, nvars + 1)}
         self.literal_to_clause = {literal: set() for literal in range(-nvars - 1, nvars + 1)}
         self.unit = []  # unit clauses
-        self.update_watch_queue = []
 
         for i, clause in enumerate(clauses):
             if clause.is_unit():
-                self.unit.append((i, False))
+                self.unit.append(i)
             for literal in clause.inner:
                 self.literal_to_clause[literal].add(i)
             for literal in clause.watched_literals:
                 self.watched_literal_to_clause[literal].add(i)
 
+    def add_watched_literal(self, idx, literal):
+        clause = self.clauses[idx]
+        self.watched_literal_to_clause[literal].add(idx)
+        clause.watched_literals.add(literal)
+    
+    def remove_watched_literal(self, idx, literal):
+        clause = self.clauses[idx]
+        self.watched_literal_to_clause[literal].remove(idx)
+        clause.watched_literals.remove(literal)
+    
     def value(self, literal):
         if literal in self.vmap:
             return True
@@ -132,68 +168,65 @@ class DPLL:
         else:
             return None
     
+    # Update of literal i
+    # Return True if conflict in updating watched literals
     def update_literal(self, i, literal, val):
         clause: Clause = self.clauses[i]
         clause.undecided.remove(literal)
+        self.updates[literal].add(i)
         if val:
             clause.true.add(literal)
         else:
             clause.false.add(literal)
         
+        # Update watched literal
         if literal in clause.watched_literals:
-            clause.watched_literals.remove(literal)
-            self.watched_literal_to_clause[literal].remove(i)
-            self.update_watch_queue.append(i)
-            
-    
-    def update_watched_literal(self):
-        while (len(self.update_watch_queue) != 0):
-            i = self.update_watch_queue.pop()
-            clause: Clause = self.clauses[i]
-            for literal in copy(clause.undecided):
-                if literal in clause.watched_literals:
-                    continue
-                new_val = self.value(literal)
+            self.remove_watched_literal(i, literal)
+            for new_literal in clause.undecided - clause.watched_literals:
+                new_val = self.value(new_literal)
                 if new_val is None:
-                    clause.watched_literals.add(literal)
-                    self.watched_literal_to_clause[literal].add(i)
-                    return None
+                    self.add_watched_literal(i, new_literal)
+                    break
                 elif new_val is False:
-                    clause.undecided.remove(literal)
-                    clause.false.add(literal)
+                    clause.undecided.remove(new_literal)
+                    self.updates[new_literal].add(i)
+                    clause.false.add(new_literal)
                 else:
+                    # Unreachable - True is already propagated.
                     assert(False)
-            
+        
+        if clause.is_false():
+            # Conflict in lazy false update
+            self.unit.clear()
+            return True
+        else:
             if clause.is_unit():
-                self.unit.append((i, False))
-
+                self.unit.append(i)
+            return False
+            
     def unit_prop(self):
         while (len(self.unit) > 0):
-            i, decision = self.unit.pop()
+            i = self.unit.pop()
             clause = self.clauses[i]
-            if len(clause.false) != 1:
+            if clause.is_true():
                 continue
-            elif clause.is_true():
-                continue
+            
+            # assert(clause.is_unit())
             
             literal = clause.get()
-            assert(not (-literal in self.vmap))
-            self.vmap.add(literal)
-            self.assignment.append((literal, None if decision else i))
+            # assert(not (-literal in self.vmap))
             
-            for j in self.literal_to_clause[literal]:
-                self.update_literal(j, literal, True)
+            self.vmap.add(literal)
+            self.assignment.append(Assignment.implication(literal, i))
             
             for j in copy(self.watched_literal_to_clause[-literal]):
-                false_clause: Clause = self.clauses[j]
-                self.update_literal(j, -literal, False)
-                if false_clause.is_false():
-                    self.unit.clear()
+                # Possible conflict
+                if self.update_literal(j, -literal, False):
                     return j
-                if false_clause.is_unit():
-                    self.unit.append((j, False))
             
-            self.update_watched_literal()
+            for j in self.literal_to_clause[literal]:
+                # No conflict in True assignment
+                self.update_literal(j, literal, True)
 
         return None
     
@@ -206,69 +239,87 @@ class DPLL:
 
     def learn_clause(self, conflict_clause: Clause):
         learned_clause: Clause = conflict_clause
-        for var, idx in self.assignment.__reversed__():
-            if idx is None:  # Decision assignment
+        for assn in self.assignment.__reversed__():
+            if assn.desc():  # Decision assignment
                 continue
-            if not learned_clause.exist(var):
+            if not learned_clause.exist(assn.literal):
                 continue
             else:  # Implied assignment with var
-                # print(f"Learning iter: {learned_clause}, {self.clauses[idx]}")
-                learned_clause = learned_clause.resolvent(var, self.clauses[idx])
+                #print(f"Learning iter: {learned_clause}, {self.clauses[assn.idx]}")
+                learned_clause = learned_clause.resolvent(assn.literal, self.clauses[assn.idx])
 
         n = len(self.clauses)
 
         for literal in learned_clause.inner:
             self.literal_to_clause[literal].add(n)
             self.updates[literal].add(n)
-            assert(self.map_literal(literal) is False)
+            # assert(-literal in self.vmap)
             learned_clause.false.add(literal)
 
         self.clauses.append(learned_clause)
 
         return learned_clause
-
+    
     def backtrack(self, learned_clause: Clause):
+        #print(self.assignment)
         while True:
-            literal, _ = self.assignment.pop()
-            self.vmap.remove(literal)
-
-            while len(self.updates[literal]) != 0:
-                i = self.updates[literal].pop()
-                clause: Clause = self.clauses[i]
-                clause.disassign(literal)
-                if len(clause.watched_literals) < 2:
-                    clause.watched_literals.add(literal)
-                    self.watched_literal_to_clause[literal].add(i)
-
-            while len(self.updates[-literal]) != 0:
-                i = self.updates[-literal].pop()
-                clause: Clause = self.clauses[i]
-                clause.disassign(-literal)
-                if len(clause.watched_literals) < 2:
-                    clause.watched_literals.add(-literal)
-                    self.watched_literal_to_clause[-literal].add(i)
+            assn = self.assignment.pop()
+            literal = assn.literal
+            self.rollback_update(literal)
 
             if learned_clause.exist(literal):
                 break
+    
+    def rollback_update(self, literal):
+        self.vmap.remove(literal)
+        while len(self.updates[literal]) != 0:
+            i = self.updates[literal].pop()
+            clause: Clause = self.clauses[i]
+            clause.disassign(literal)
+            if len(clause.watched_literals) < 2:
+                self.add_watched_literal(i, literal)
+
+        while len(self.updates[-literal]) != 0:
+            i = self.updates[-literal].pop()
+            clause: Clause = self.clauses[i]
+            clause.disassign(-literal)
+            if len(clause.watched_literals) < 2:
+                self.add_watched_literal(i, -literal)
 
     def decision(self):
-        for i, clause in enumerate(self.clauses):
+        for clause in self.clauses:
             if not clause.is_true():
-                literal = clause.get()
+                # Watched literals are undecided and not target of lazy-evaluation
+                literal = next(iter(clause.watched_literals))
+                # assert(-literal not in self.vmap)
                 self.vmap.add(literal)
-                self.unit.append((i, True))
-                break
+                self.assignment.append(Assignment.decision(literal))
+        
+                # False updates
+                for j in copy(self.watched_literal_to_clause[-literal]):
+                    # Possible conflict
+                    if self.update_literal(j, -literal, False):
+                        # This is lazy-evaluated unit clause
+                        self.rollback_update(literal)
+                        self.assignment.pop()
+                        self.unit.append(j)
+                        return j
+                
+                for j in self.literal_to_clause[literal]:
+                    # No conflict in True assignment
+                    self.update_literal(j, literal, True)
+                return None
 
     def run(self):
         preprocess = True
         while True:
-            print(self.unit)
+            #print(self.unit)
             #print(f"Current Solution: {self.vmap}")
             #print(f"Assignments: {self.assignment}")
             
             conflict = self.unit_prop()
-            print(f"Clauses: {self.clauses}")
-            input()
+            #print(f"Clauses: {self.clauses}")
+            #input()
             
             if preprocess:
                 if conflict is not None:
@@ -279,15 +330,13 @@ class DPLL:
                 return Solution(True, self.vmap)
 
             if conflict is not None:
-                assert(self.clauses[conflict].is_false())
+                # assert(self.clauses[conflict].is_false())
                 learned_clause = self.learn_clause(self.clauses[conflict])
-                #print(f"Learned {self.clauses[conflict]} -> {learned_clause}")
                 if learned_clause.empty():
                     return Solution(False)
                 self.backtrack(learned_clause)
-                #print(f"Backtrack {learned_clause}")
                 assert learned_clause.is_unit()
-                self.unit.append((len(self.clauses)-1, False))
+                self.unit.append(len(self.clauses)-1)
             else:
                 self.decision()
 
