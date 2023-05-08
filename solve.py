@@ -168,6 +168,7 @@ class DPLL:
         self.updates[literal].add(i)
         if literal in self.vmap:
             clause.true.add(literal)
+            return False
         else:
             clause.false.add(literal)
         
