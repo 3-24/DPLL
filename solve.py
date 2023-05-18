@@ -85,7 +85,7 @@ class Clause:
     @classmethod
     def default_clause(cls, iterable):
         clause = cls()
-        clause.inner = set(iterable)
+        clause.inner = set(map(lambda val: val << 1 if val > 0 else ((-val) << 1) | 1, iterable))
         clause.undecided = copy(clause.inner)
 
         if len(clause.undecided) <= 2:
@@ -111,7 +111,7 @@ class Clause:
         return len(self.inner) == 0
 
     def exist(self, var):
-        return (var in self.inner) or (-var in self.inner)
+        return (var in self.inner) or ((var ^ 1) in self.inner)
 
     def is_true(self):
         return bool(self.true)
@@ -122,11 +122,11 @@ class Clause:
     def is_unit(self):
         return not bool(self.true) and len(self.undecided) == 1
 
-    def resolvent(self, var, clause):
+    def resolvent(self, literal, clause):
         cl = Clause()
         cl.inner = self.inner.union(clause.inner)
-        cl.inner.remove(var)
-        cl.inner.remove(-var)
+        cl.inner.remove(literal)
+        cl.inner.remove(literal ^ 1)
         return cl          # Will assign undecided / false later
 
 
@@ -135,9 +135,9 @@ class DPLL:
         self.clauses = clauses
         self.assignment = []
         self.vmap = set()
-        self.updates = {literal: set() for literal in range(-nvars - 1, nvars + 1)}
-        self.watched_literal_to_clause = {literal: set() for literal in range(-nvars - 1, nvars + 1)}
-        self.literal_to_clause = {literal: set() for literal in range(-nvars - 1, nvars + 1)}
+        self.updates = [set() for _ in range (2 * (nvars+1))]
+        self.watched_literal_to_clause = [set() for _ in range (2 * (nvars+1))]
+        self.literal_to_clause = [set() for _ in range (2 * (nvars+1))]
         self.unit = []  # unit clauses
 
         for i, clause in enumerate(clauses):
@@ -176,7 +176,7 @@ class DPLL:
         if literal in clause.watched_literals:
             self.remove_watched_literal(i, literal)
             for new_literal in clause.undecided - clause.watched_literals:
-                if -new_literal in self.vmap:
+                if (new_literal ^ 1) in self.vmap:
                     # False
                     clause.undecided.remove(new_literal)
                     self.updates[new_literal].add(i)
@@ -208,9 +208,9 @@ class DPLL:
             self.vmap.add(literal)
             self.assignment.append(Assignment.implication(literal, i))
             
-            for j in copy(self.watched_literal_to_clause[-literal]):
+            for j in copy(self.watched_literal_to_clause[literal ^ 1]):
                 # Possible conflict
-                if self.update_literal(j, -literal):
+                if self.update_literal(j, literal ^ 1):
                     return j
             
             for j in self.literal_to_clause[literal]:
@@ -268,12 +268,12 @@ class DPLL:
             if len(clause.watched_literals) < 2:
                 self.add_watched_literal(i, literal)
 
-        while len(self.updates[-literal]) != 0:
-            i = self.updates[-literal].pop()
+        while len(self.updates[literal ^ 1]) != 0:
+            i = self.updates[literal ^ 1].pop()
             clause: Clause = self.clauses[i]
-            clause.disassign(-literal)
+            clause.disassign(literal ^ 1)
             if len(clause.watched_literals) < 2:
-                self.add_watched_literal(i, -literal)
+                self.add_watched_literal(i, literal ^ 1)
 
     def decision(self):
         for clause in self.clauses:
@@ -285,9 +285,9 @@ class DPLL:
                 self.assignment.append(Assignment.decision(literal))
         
                 # False updates
-                for j in copy(self.watched_literal_to_clause[-literal]):
+                for j in copy(self.watched_literal_to_clause[literal ^ 1]):
                     # Possible conflict
-                    if self.update_literal(j, -literal):
+                    if self.update_literal(j, literal ^ 1):
                         # This is lazy-evaluated unit clause
                         self.rollback_update(literal)
                         self.assignment.pop()
