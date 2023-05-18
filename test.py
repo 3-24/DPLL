@@ -3,10 +3,18 @@ from solve import *
 
 def run_file(file_name, sat):
     print(file_name)
-    dpll = DPLL(*parse_problem(file_name))
+    clauses, nvars = parse_problem(file_name)
+    dpll = DPLL(clauses, nvars)
     result = dpll.run()
     print(result)
     assert(result.sat == sat)
+    if sat:
+        # Verify the solution
+        for clause in clauses:
+            for literal in clause:
+                if (literal in result.sol):
+                    continue
+            assert(False)
     
 
 def run_dir(dir_name, sat):
