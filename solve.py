@@ -67,7 +67,7 @@ class Solution:
             first_line = "s SATISFIABLE\n"
             L = ["v"]
             for s in self.sol:
-                L.append(str(s))
+                L.append(str(-(s >> 1)  if (s & 1) else (s >> 1)))
             L.append("0")
             return first_line + " ".join(L)
         
@@ -317,7 +317,7 @@ class DPLL:
                 preprocess = False
 
             if self.satisfied():
-                return Solution(True, set(map(lambda x: -(x >> 1)  if (x | 1) else x >> 1, self.vmap)))
+                return Solution(True, self.vmap)
 
             if conflict is not None:
                 self.unit.clear()
