@@ -316,7 +316,7 @@ class DPLL:
                 preprocess = False
 
             if self.satisfied():
-                return Solution(True, self.vmap)
+                return Solution(True, set(map(lambda x: -(x >> 1)  if (x | 1) else x >> 1, self.vmap)))
 
             if conflict is not None:
                 self.unit.clear()
