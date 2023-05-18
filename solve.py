@@ -268,12 +268,13 @@ class DPLL:
             if len(clause.watched_literals) < 2:
                 self.add_watched_literal(i, literal)
 
-        while len(self.updates[literal ^ 1]) != 0:
-            i = self.updates[literal ^ 1].pop()
+        neg_literal = literal ^ 1
+        while len(self.updates[neg_literal]) != 0:
+            i = self.updates[neg_literal].pop()
             clause: Clause = self.clauses[i]
-            clause.disassign(literal ^ 1)
+            clause.disassign(neg_literal)
             if len(clause.watched_literals) < 2:
-                self.add_watched_literal(i, literal ^ 1)
+                self.add_watched_literal(i, neg_literal)
 
     def decision(self):
         for clause in self.clauses:
