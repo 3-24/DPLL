@@ -195,7 +195,7 @@ class DPLL:
         return False
             
     def unit_prop(self):
-        while len(self.unit) > 0:
+        while self.unit:
             i = self.unit.pop()
             clause = self.clauses[i]
             if clause.is_true():
@@ -261,7 +261,7 @@ class DPLL:
     
     def rollback_update(self, literal):
         self.vmap.remove(literal)
-        while len(self.updates[literal]) != 0:
+        while self.updates[literal]:
             i = self.updates[literal].pop()
             clause: Clause = self.clauses[i]
             clause.disassign(literal)
@@ -269,7 +269,7 @@ class DPLL:
                 self.add_watched_literal(i, literal)
 
         neg_literal = literal ^ 1
-        while len(self.updates[neg_literal]) != 0:
+        while self.updates[neg_literal]:
             i = self.updates[neg_literal].pop()
             clause: Clause = self.clauses[i]
             clause.disassign(neg_literal)
