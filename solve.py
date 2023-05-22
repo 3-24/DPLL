@@ -85,14 +85,12 @@ class Clause:
     @classmethod
     def default_clause(cls, iterable):
         clause = cls()
-        clause.inner = set(map(lambda val: val << 1 if val > 0 else ((-val) << 1) | 1, iterable))
-        clause.undecided = copy(clause.inner)
-
-        if len(clause.undecided) <= 2:
-            clause.watched_literals = copy(clause.undecided)
-        else:
-            it = iter(clause.undecided)
-            clause.watched_literals = set((next(it), next(it)))
+        for val in iterable:
+            val_encoded = val << 1 if val > 0 else ((-val) << 1) | 1
+            clause.inner.add(val_encoded)
+            clause.undecided.add(val_encoded)
+            if (len(clause.watched_literals) < 2):
+                clause.watched_literals.add(val_encoded)
 
         return clause
 
