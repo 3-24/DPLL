@@ -91,3 +91,45 @@ To check the effectiveness of watched literals, I checked the time spent by my s
 | unit propagation updating all literals  | 1.19s | 11.75s | 1.00s | 0.04s |
 
 The performance improved for three cases, especially 7_UNSAT performance is gained from 11.75s to 4.55s. The performance dropped for 9_SAT - from 0.04s to 1.14s. It needs more study to inspect the reason. Overall, I think watched literals technique is beneficial, hence I decided to use watched literals as default.
+
+## 4. Formats of Input and Output
+
+I slightly modified the homework instruction found in https://github.com/hongseok-yang/logic23.
+
+* It follows DIMACS input/output requirements. You can learn about these requirements at the following URL: [http://www.satcompetition.org/2009/format-benchmarks2009.html](http://www.satcompetition.org/2009/format-benchmarks2009.html). This is the format used in the SAT competition. 
+* Assume that the input is always in CNF format.
+
+### 4.1. Input Interface
+
+To run the solver with cnf problem "test.cnf", the corresponding command is:
+
+* python3 solve.py "testn.cnf"
+
+### 4.2. Output Interface
+
+The output specifies SATISFIABLE/UNSATISFIABLE using s and give a partial assignment using v. So, if solver is run
+
+```
+python3 solve.py "test1.cnf"
+```
+
+but "test1.cnf" is unsatisfiable and the solver finds this out, it returns
+
+```
+s UNSATISFIABLE
+```
+
+in the standard output. On the other hand, if the solver is run
+
+```
+python3 solvepy3.py "test2.cnf"
+```
+
+but "test2.cnf" is satisfiable and the solver finds a satisfying partial assignment (2, 5, -7) meaning that variables 2 and 5 have the value 1 and the variable 7 has the value -1 in the found partial assignment, then the solver returns
+
+```
+s SATISFIABLE
+v 2 5 -7 0
+```
+
+Here 0 indicates the end of the found partial assignment.
