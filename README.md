@@ -1,98 +1,93 @@
-## 6. Programming Assignment and Report
+# SAT Solver Implementation in Python
 
-Here are two tasks that you will have to do.
+This was a homework for Introduction to Logic for Computer Science course in KAIST, Spring 23.
 
-* Implement a SAT solver using the DPLL algorithm with clause learning, which we cover in the course, and also using optimisations for SAT solving that you devise or can find in the literature. Your implementation should not use any external python libraries directly related to SAT solving. 
-* Write a report that describes what you implemented, the design decision behind your implementation, and the rationale behind those decisions. The report should be at most 4 pages excluding the bibliography and figures. For instance, you can describe a list of possible optimisations for SAT solving, analyse the cons and pros of those optimisations, explain why you decide to choose only some of these optimisations, and justify your decision with experiments. 
+## 1. Design Choices
 
-#### 6.1. Evaluation
+- [x] DPLL Algortihm
+- [x] Encode positive and negative literals into natrual numbers (inspired by Art of Computer Programming 4B, Donald Knuth)
+- [x] Watched Literals
+- [x] Decision heurisitic to choose any undecided literal in undecided clause
+- [ ] Random Restart
 
-* Implementation (20%). Report (10%). 
-* The submitted implementation will be marked automatically using our script. 
-* The submitted report will be marked based on the level of originality and experimental or theoretical thoroughness in the analysis of the submitted implementation and its design decision, in a broad context of efficient SAT solving.
+## 2. Clause Data Structure
 
-#### 6.2. Deadline
+In order to record the value of each literal in clauses as undecided/true/false, `Clause` has five sets - inner, undecided, true, false, and watched_literals. The set data structure was used to do fast add, delete, and existence checks of any literals.
 
-* __**23:59 of the 22nd of May in 2023 (Monday).**__ Summit both your implementation and report in KLMS.
+Inspired by Art of Computer Programming 4B (Donald Knuth), it encodes each literal to a natural number by mapping positive literal $p$ as $2p$ and negative literal $\neg p$ as $2p+1$. Then the negation is equvalent to doing **xor** with 1 for all literals.
 
-#### 6.3. Programming Language to Use
+## 3. Main Routine
 
-* Python 3.7-10.
+I defined `DPLL` class to implement the DPLL algorithm. It has several class attributes to use DPLL algorithms.
 
-#### 6.4. Formats of Input and Output
+- clauses: It is the list of clauses of this problem . New clauses are added when it runs the clause learning algorithm.
+- assignment: The list that collects every implication and decision information. It is used in the clause learning algorithm.
+- vmap: the partial solution that it searched so far.
+- updates: For each literal, it maintains in which clause the literal is updated. It is used when it rollbacks the updates after backtracking.
+- watched_literal_to_clause: For each literal, it keeps the information in which clause the literal is configured as watched literals.
+- literal_to_clause: For each literal, it keeps in which clause the literal exists.
 
-* Follow DIMACS input/output requirements. You can learn about these requirements at the following URL: [http://www.satcompetition.org/2009/format-benchmarks2009.html](http://www.satcompetition.org/2009/format-benchmarks2009.html). This is the format used in the SAT competition. 
-* Assume that the input is always in CNF format.
+### 3.1.  The DPLL Algorithm
 
-#### 6.5. Input Interface
+```python
+preprocess = True
+while True:
+    conflict = self.unit_prop()
+    if preprocess:
+        if conflict is not None:
+            return Solution(False)
+        preprocess = False
 
-The main file of your solver should be named as follows:
+    if self.satisfied():
+        return Solution(True, self.vmap)
 
-* solvepy3.py 
-
-We plan to write a script that runs your solver with a cnf formula stored in a file (according to DIMACS format). The script searches for the solvepy3.py file in your submission, and runs something like
-
-* python3 solvepy3.py "testn.cnf" --- when solvepy3.py is found.
-
-Here "testn.cnf" is just an example name of a file containing a cnf formula in DIMACS format. Of course, different test cases will use different names.
-
-#### 6.6. Output Interface
-
-The output should specify SATISFIABLE/UNSATISFIABLE using s and give a partial assignment using v. So, if your solver is run
-
-```
-python3 solvepy3.py "test1.cnf"
-```
-
-but "test1.cnf" is unsatisfiable and your solver finds this out, it should return
-
-```
-s UNSATISFIABLE
-```
-
-in the standard output. On the other hand, if your solver is run
-
-```
-python3 solvepy3.py "test2.cnf"
+    if conflict is not None:
+        self.unit.clear()
+        # assert(self.clauses[conflict].is_false())
+        learned_clause = self.learn_clause(self.clauses[conflict])
+        if learned_clause.empty():
+            return Solution(False)
+        self.backtrack(learned_clause)
+        self.unit.append(len(self.clauses)-1)
+    else:
+        self.decision()
 ```
 
-but "test2.cnf" is satisfiable and your solver finds a satisfying partial assignment (2, 5, -7) meaning that variables 2 and 5 have the value 1 and the variable 7 has the value -1 in the found partial assignment, then your solver should return
+In the while loop, it first runs unit propagation. If a conflict occurs in the first iteration, the problem itself is unsatisfiable. Otherwise, if every clause is satisfied, the problem is solved so return the satisfying partial assignment. If a conflict exists, run the clause learning algorithm and mark the newly learned clause as the unit clause which is used in the next unit propagation. If there was no conflict, run the decision algorithm.
 
+### 3.2. Unit Propagation with Watched Literals
+
+```python
+while self.unit:
+    i = self.unit.pop()
+    clause = self.clauses[i]
+    if clause.is_true():
+        continue
+    
+    literal = next(iter(clause.undecided))
+    
+    self.vmap.add(literal)
+    self.assignment.append(Assignment.implication(literal, i))
+    
+    for j in copy(self.watched_literal_to_clause[literal ^ 1]):
+        # Possible conflict
+        if self.update_literal(j, literal ^ 1):
+            return j
+    
+    for j in self.literal_to_clause[literal]:
+        # No conflict in True assignment
+        self.update_literal(j, literal)
+
+return None
 ```
-s SATISFIABLE
-v 2 5 -7 0
-```
 
-Here 0 indicates the end of the found partial assignment. The description of a found partial assignment can be across multiple lines. For instance, in the above case, the solver may return
+Suppose literal $L$ remains as undecided in the unit clause. Unit propagation step updates this literal as true. In a simple way, the solver updates $L$ and $\overline{L}$ in every clause. My algorithm updates $L$ in every clause, but not $\overline{L}$. Only if $\overline{L}$ is a watched literal, it update $\overline{L}$ as false. This lazy false-updating strategy is adopted because assigning true to literal is important to decide the satisfiability, but assigning false is not that interesting.  False is important only when the change makes the clause unit or false. This is the core idea of watched literals. By keep watching only two literals, it makes us reduce the resource for updates and backtracking.
 
-```
-s SATISFIABLE
-v 2 5
-v -7 0
-```
+To check the effectiveness of watched literals, I checked the time spent by my solver for the four example cases.
 
-#### 6.7. What to Submit in KLMS?
+|  | 6_SAT | 7_UNSAT | 8_UNSAT | 9_SAT |
+| --- | --- | --- | --- | --- |
+| unit propagation with watched literals | 0.03s | 4.55s | 0.37s | 1.14s |
+| unit propagation updating all literals  | 1.19s | 11.75s | 1.00s | 0.04s |
 
-A zip file named "dpll.zip" containing two files:
-
-* Source code of your implementation. Make sure that you follow the specifications described above. We plan to write a script that compiles and runs your code on some test cases automatically. Locate a solvepy*.py file on the root of the zip file.
-* A report on your implementation, its design decision, and the rationale behind or justification of the decision. The report must be written by a word processor and submitted in a pdf format. (Its file name doesn't matter.) 
-The report should be at most 4 pages without including the bibliography and figures.
-
-#### 6.8. Test Cases
-
-The following webpages contain benchmark problems in DIMACS format: 
-
-* [https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html](https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html) and 
-* [http://people.sc.fsu.edu/~jburkardt/data/cnf/cnf.html](http://people.sc.fsu.edu/~jburkardt/data/cnf/cnf.html). 
-
-Those problems have a little bit different format described in the DIMACS format above; clause can be expressed on several lines, ill-formatted end lines. Therefore, you may need to modify your code or the problems to test them. However, the test cases for grading will strictly obey the DIMACS format above.  In the course webpage, we uploaded a zip file that contains some test cases we used before. To see the file, follow the below link:
-
-* [https://github.com/hongseok-yang/logic23/blob/master/Others/Test_Case.zip](https://github.com/hongseok-yang/logic23/blob/master/Others/Test_Case.zip).
-
-If you implemented the DPLL algorithm in the lecture correctly, then your code will return a result in 1 minute for every cases in the above zip file (tested in i7 7700HQ). Note that these cases are just examples, not necessarily ones that we will use to test your code for marking; we will certainly try new test cases with various difficulty. Thus, even when your code finds a right answer to every provided case within 1 minute, it may perform badly on the real test cases, and fail to get good marks.
-
-
-#### 6.9. Final Remark
-
-Make sure that your implementation handles corner cases correctly. There will be a timeout for each test case to check that you implemented the DPLL algorithms in the lecture properly. Finally, start this programming project as early as possible.
+The performance improved for three cases, especially 7_UNSAT performance is gained from 11.75s to 4.55s. The performance dropped for 9_SAT - from 0.04s to 1.14s. It needs more study to inspect the reason. Overall, I think watched literals technique is beneficial, hence I decided to use watched literals as default.
