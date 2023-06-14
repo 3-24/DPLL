@@ -3,7 +3,7 @@
 This was a homework for Introduction to Logic for Computer Science course in KAIST, Spring 23.
 
 ## 1. Design Choices
-
+- [ ] Variable Elimination
 - [x] DPLL Algortihm
 - [x] Encode positive and negative literals into natrual numbers (inspired by Art of Computer Programming 4B, Donald Knuth)
 - [x] Watched Literals
