@@ -1,6 +1,6 @@
-# SAT Solver Implementation in Python
+# SAT Solver for CNF formulas
 
-This was a homework for Introduction to Logic for Computer Science course in KAIST, Spring 23.
+It is well-known that every boolean satisfiability problem (SAT) can be reduced to a conjunctive normal formula (CNF). Therefore it is common to write a solver for CNF formulas to solve SAT in general.
 
 ## 1. Design Choices
 - [ ] Variable Elimination
@@ -94,7 +94,7 @@ The performance improved for three cases, especially 7_UNSAT performance is gain
 
 ## 4. Formats of Input and Output
 
-I slightly modified the homework instruction found in https://github.com/hongseok-yang/logic23.
+I slightly modified the homework instruction found in https://github.com/hongseok-yang/logic23. This was a homework of Introduction to Logic for Computer Science course in KAIST, Spring 23.
 
 * It follows DIMACS input/output requirements. You can learn about these requirements at the following URL: [http://www.satcompetition.org/2009/format-benchmarks2009.html](http://www.satcompetition.org/2009/format-benchmarks2009.html). This is the format used in the SAT competition. 
 * Assume that the input is always in CNF format.
